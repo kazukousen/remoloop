@@ -35,10 +35,10 @@ func (c client) work() {
 	}
 }
 
-func (c client) request(ctx context.Context, resource resource, dst interface{}) (err error) {
+func (c client) request(ctx context.Context, resource resource, dst interface{}) error {
 	req, err := http.NewRequest(http.MethodGet, c.host+string(resource), nil)
 	if err != nil {
-		return
+		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -49,18 +49,17 @@ func (c client) request(ctx context.Context, resource resource, dst interface{})
 	}()
 
 	select {
-	case e := <-ch:
-		if e != nil {
-			err = e
-			return
+	case err := <-ch:
+		if err != nil {
+			return err
 		}
 	case <-ctx.Done():
 		<-ch
 		err = ctx.Err()
-		return
+		return err
 	}
 
-	return
+	return nil
 }
 
 func (c client) doRequest(req *http.Request, dst interface{}) (err error) {
