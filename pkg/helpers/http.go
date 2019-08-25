@@ -7,12 +7,12 @@ import (
 	"time"
 )
 
-// HTTPClientConfig ...
+// HTTPClientConfig represents HTTP Client configuration.
 type HTTPClientConfig struct {
 	BearerToken string `yaml:"bearer_token"`
 }
 
-// NewHTTPClient ...
+// NewHTTPClient returns http.Client.
 func NewHTTPClient(cfg HTTPClientConfig) *http.Client {
 	rt := &http.Transport{
 		IdleConnTimeout:     5 * time.Minute,
@@ -26,6 +26,7 @@ func NewHTTPClient(cfg HTTPClientConfig) *http.Client {
 	return client
 }
 
+// bearerAuthRoundTripper implements http.RoundTripper.
 type bearerAuthRoundTripper struct {
 	bearerToken string
 	rt          http.RoundTripper

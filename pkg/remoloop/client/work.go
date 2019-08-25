@@ -1,9 +1,10 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"time"
 
@@ -21,21 +22,28 @@ func (c client) work() {
 	for {
 		select {
 		case <-t.C:
-			devices := []device{}
-			if err := c.request(context.Background(), resourceDevices, &devices); err != nil {
-				level.Error(c.logger).Log("msg", "could not request", "path", resourceDevices, "error", err)
+			buf := &bytes.Buffer{}
+			if err := c.request(context.Background(), resourceDevices, buf); err != nil {
+				level.Error(c.logger).Log("msg", "could not request", "resource", resourceDevices, "error", err)
 				continue
 			}
-			for _, device := range devices {
-				level.Debug(c.logger).Log("msg", "get devices", "id", device.ID, "name", device.Name)
+			devices := []device{}
+			if err := json.Unmarshal(buf.Bytes(), &devices); err != nil {
+				level.Error(c.logger).Log("msg", "failed decode", "resource", resourceDevices, "error", err)
+				continue
 			}
+			/*
+				for _, device := range devices {
+					level.Debug(c.logger).Log("msg", "get devices", "id", device.ID, "name", device.Name)
+				}
+			*/
 		case <-c.exit:
 			return
 		}
 	}
 }
 
-func (c client) request(ctx context.Context, resource resource, dst interface{}) error {
+func (c client) request(ctx context.Context, resource resource, w io.Writer) error {
 	req, err := http.NewRequest(http.MethodGet, c.host+string(resource), nil)
 	if err != nil {
 		return err
@@ -45,7 +53,7 @@ func (c client) request(ctx context.Context, resource resource, dst interface{})
 	req = req.WithContext(ctx)
 	ch := make(chan error, 1)
 	go func() {
-		ch <- c.doRequest(req, dst)
+		ch <- c.doRequest(req, w)
 	}()
 
 	select {
@@ -62,7 +70,7 @@ func (c client) request(ctx context.Context, resource resource, dst interface{})
 	return nil
 }
 
-func (c client) doRequest(req *http.Request, dst interface{}) (err error) {
+func (c client) doRequest(req *http.Request, w io.Writer) (err error) {
 	res, err := c.client.Do(req)
 	if err != nil {
 		return
@@ -76,11 +84,6 @@ func (c client) doRequest(req *http.Request, dst interface{}) (err error) {
 		err = xerrors.Errorf("http status code: %s", res.StatusCode)
 		return
 	}
-	b, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return
-	}
-	// level.Debug(c.logger).Log("msg", "json data", "data", string(b))
-	err = json.Unmarshal(b, dst)
+	_, err = io.Copy(w, res.Body)
 	return
 }
