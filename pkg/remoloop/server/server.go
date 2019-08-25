@@ -26,7 +26,7 @@ type server struct {
 
 // New returns Server and http Server listen and serve.
 func New(logger log.Logger, cfg Config, client client.Client) (Server, error) {
-	path, port := "/", 4100
+	path, port := "", 4100
 	if cfg.RootPath != "" {
 		path = cfg.RootPath
 		if path[0] != '/' {
@@ -37,25 +37,29 @@ func New(logger log.Logger, cfg Config, client client.Client) (Server, error) {
 		port = cfg.Port
 	}
 
-	handler := &handler{path: path}
-
 	s := &server{
 		logger: log.With(logger, "component", "server"),
 		done:   make(chan error, 1),
 		client: client,
-		server: &http.Server{
-			ReadHeaderTimeout: 1 * time.Minute,
-			Addr:              ":" + strconv.Itoa(port),
-			Handler:           handler,
-		},
+	}
+	s.server = &http.Server{
+		ReadHeaderTimeout: 1 * time.Minute,
+		Addr:              ":" + strconv.Itoa(port),
+		Handler:           s,
 	}
 
-	go s.run()
+	if path != "" {
+		s.server.Handler = s.rewriteRootPath(path, s)
+	} else {
+		s.server.Handler = s
+	}
+
+	go s.serve()
 
 	return s, nil
 }
 
-func (s server) run() {
+func (s server) serve() {
 	s.done <- s.server.ListenAndServe()
 }
 

@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/kazukousen/remoloop/pkg/remoloop/api"
+
 	"github.com/go-kit/kit/log/level"
 	"golang.org/x/xerrors"
 
@@ -17,7 +19,7 @@ import (
 // Client represents API Client.
 type Client interface {
 	Stop(ctx context.Context)
-	Get(resource resource, w io.Writer)
+	Get(ctx context.Context, resource api.Resource, w io.Writer)
 }
 
 type client struct {
@@ -34,18 +36,18 @@ func New(logger log.Logger, cfg Config) (Client, error) {
 	host := "https://api.nature.global"
 	c := &client{
 		host:   host,
-		logger: log.With(logger, "component", "client"),
+		logger: log.With(logger, "component", "client", "host", host),
 		exit:   make(chan struct{}, 1),
 		done:   make(chan struct{}, 1),
+		client: helpers.NewHTTPClient(cfg.HTTPClientConfig),
 	}
-	c.client = helpers.NewHTTPClient(cfg.HTTPClientConfig)
 
 	// ping
 	buf := &bytes.Buffer{}
-	if err := c.request(context.Background(), resourceUsersMe, buf); err != nil {
+	if err := c.request(context.Background(), api.ResourceUsersMe, buf); err != nil {
 		return nil, err
 	}
-	dst := &usersMe{}
+	dst := &api.Me{}
 	if err := json.Unmarshal(buf.Bytes(), dst); err != nil {
 		return nil, xerrors.New("could not connect API")
 	}
