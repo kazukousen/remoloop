@@ -21,7 +21,7 @@ type server struct {
 	logger log.Logger
 	server *http.Server
 	client client.Client
-	done   chan error
+	done   chan struct{}
 }
 
 // New returns Server and http Server listen and serve.
@@ -39,7 +39,7 @@ func New(logger log.Logger, cfg Config, client client.Client) (Server, error) {
 
 	s := &server{
 		logger: log.With(logger, "component", "server"),
-		done:   make(chan error, 1),
+		done:   make(chan struct{}, 1),
 		client: client,
 	}
 	s.server = &http.Server{
@@ -60,7 +60,8 @@ func New(logger log.Logger, cfg Config, client client.Client) (Server, error) {
 }
 
 func (s server) serve() {
-	s.done <- s.server.ListenAndServe()
+	s.server.ListenAndServe()
+	close(s.done)
 }
 
 func (s server) Stop(ctx context.Context) {
@@ -68,6 +69,7 @@ func (s server) Stop(ctx context.Context) {
 		level.Error(s.logger).Log("msg", "failed to shutdown server", "error", err)
 		return
 	}
+	<-s.done
 	level.Info(s.logger).Log("msg", "success to stop server")
 	s.client.Stop(ctx)
 }
