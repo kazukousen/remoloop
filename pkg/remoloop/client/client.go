@@ -6,14 +6,14 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-
-	"github.com/kazukousen/remoloop/pkg/remoloop/api"
-
-	"github.com/go-kit/kit/log/level"
-	"golang.org/x/xerrors"
+	"strconv"
+	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/kazukousen/remoloop/pkg/helpers"
+	"github.com/kazukousen/remoloop/pkg/remoloop/api"
+	"golang.org/x/xerrors"
 )
 
 // Client represents API Client.
@@ -34,6 +34,9 @@ type client struct {
 // New returns Client and stand up worker goroutine.
 func New(logger log.Logger, cfg Config) (Client, error) {
 	host := "https://api.nature.global"
+	if cfg.host != "" {
+		host = cfg.host
+	}
 	c := &client{
 		host:   host,
 		logger: log.With(logger, "component", "client", "host", host),
@@ -41,6 +44,7 @@ func New(logger log.Logger, cfg Config) (Client, error) {
 		done:   make(chan struct{}, 1),
 		client: helpers.NewHTTPClient(cfg.HTTPClientConfig),
 	}
+	c.client.Transport = newRateLimitRoundTripper(c.client.Transport)
 
 	// ping
 	buf := &bytes.Buffer{}
@@ -65,4 +69,44 @@ func (c client) Stop(ctx context.Context) {
 		level.Info(c.logger).Log("msg", "success to stop client")
 	case <-ctx.Done():
 	}
+}
+
+type rateLimitRoundTripper struct {
+	rt        http.RoundTripper
+	reset     time.Time
+	remaining int
+}
+
+func newRateLimitRoundTripper(rt http.RoundTripper) http.RoundTripper {
+	return &rateLimitRoundTripper{
+		rt: rt,
+	}
+}
+
+func (lrt *rateLimitRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if lrt.reset.Sub(time.Now()) > 0 && lrt.remaining < 1 {
+		return nil, xerrors.Errorf("rate limit quota. the time until the next reset: %s", lrt.reset)
+	}
+
+	// RoundTrip
+	res, err := lrt.rt.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Number of remaining requests
+	remaining, err := strconv.Atoi(res.Header.Get("X-Rate-Limit-Remaining"))
+	if err != nil {
+		return nil, err
+	}
+	lrt.remaining = remaining
+
+	// Time until the next reset
+	reset, err := strconv.ParseInt(res.Header.Get("X-Rate-Limit-Reset"), 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	lrt.reset = time.Unix(reset, 0)
+
+	return res, err
 }
