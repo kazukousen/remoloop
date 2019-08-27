@@ -6,10 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/kazukousen/remoloop/pkg/remoloop/client"
-
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/kazukousen/remoloop/pkg/remoloop/client"
 )
 
 // Server represents http.Server.

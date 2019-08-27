@@ -4,6 +4,6 @@ import "github.com/kazukousen/remoloop/pkg/helpers"
 
 // Config ...
 type Config struct {
-	host                     string `yaml:"host"`
-	helpers.HTTPClientConfig `yaml:",inline"`
+	Host       string                   `yaml:"host,omitempty"`
+	HTTPConfig helpers.HTTPClientConfig `yaml:",inline"`
 }

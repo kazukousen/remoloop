@@ -21,7 +21,7 @@ func (c client) Get(ctx context.Context, resource api.Resource, w io.Writer) {
 func (c client) request(ctx context.Context, resource api.Resource, w io.Writer) error {
 	req, err := http.NewRequest(http.MethodGet, c.host+resource.String(), nil)
 	if err != nil {
-		return err
+		return xerrors.Errorf("could not new httpRequest: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -48,6 +48,7 @@ func (c client) request(ctx context.Context, resource api.Resource, w io.Writer)
 func (c client) doRequest(req *http.Request, w io.Writer) (err error) {
 	res, err := c.client.Do(req)
 	if err != nil {
+		err = xerrors.Errorf("could not do httpRequest: %w", err)
 		return
 	}
 	defer func() {

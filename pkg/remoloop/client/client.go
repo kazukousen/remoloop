@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -34,22 +35,22 @@ type client struct {
 // New returns Client and stand up worker goroutine.
 func New(logger log.Logger, cfg Config) (Client, error) {
 	host := "https://api.nature.global"
-	if cfg.host != "" {
-		host = cfg.host
+	if cfg.Host != "" {
+		host = cfg.Host
 	}
 	c := &client{
 		host:   host,
 		logger: log.With(logger, "component", "client", "host", host),
 		exit:   make(chan struct{}, 1),
 		done:   make(chan struct{}, 1),
-		client: helpers.NewHTTPClient(cfg.HTTPClientConfig),
+		client: helpers.NewHTTPClient(cfg.HTTPConfig),
 	}
 	c.client.Transport = newRateLimitRoundTripper(c.client.Transport)
 
 	// ping
 	buf := &bytes.Buffer{}
 	if err := c.request(context.Background(), api.ResourceUsersMe, buf); err != nil {
-		return nil, err
+		return nil, xerrors.Errorf("could not request: %w", err)
 	}
 	dst := &api.Me{}
 	if err := json.Unmarshal(buf.Bytes(), dst); err != nil {
@@ -73,6 +74,7 @@ func (c client) Stop(ctx context.Context) {
 
 type rateLimitRoundTripper struct {
 	rt        http.RoundTripper
+	mu        *sync.Mutex
 	reset     time.Time
 	remaining int
 }
@@ -80,11 +82,12 @@ type rateLimitRoundTripper struct {
 func newRateLimitRoundTripper(rt http.RoundTripper) http.RoundTripper {
 	return &rateLimitRoundTripper{
 		rt: rt,
+		mu: &sync.Mutex{},
 	}
 }
 
 func (lrt *rateLimitRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if lrt.reset.Sub(time.Now()) > 0 && lrt.remaining < 1 {
+	if !lrt.reset.IsZero() && lrt.reset.Sub(time.Now()) > 0 && lrt.remaining < 1 {
 		return nil, xerrors.Errorf("rate limit quota. the time until the next reset: %s", lrt.reset)
 	}
 
@@ -94,19 +97,22 @@ func (lrt *rateLimitRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 		return nil, err
 	}
 
-	// Number of remaining requests
-	remaining, err := strconv.Atoi(res.Header.Get("X-Rate-Limit-Remaining"))
-	if err != nil {
+	if err := lrt.setRateLimit(res); err != nil {
 		return nil, err
 	}
+
+	return res, err
+}
+
+func (lrt rateLimitRoundTripper) setRateLimit(res *http.Response) error {
+	lrt.mu.Lock()
+	defer lrt.mu.Unlock()
+	// Number of remaining requests
+	remaining, _ := strconv.Atoi(res.Header.Get("X-Rate-Limit-Remaining"))
 	lrt.remaining = remaining
 
 	// Time until the next reset
-	reset, err := strconv.ParseInt(res.Header.Get("X-Rate-Limit-Reset"), 10, 64)
-	if err != nil {
-		return nil, err
-	}
+	reset, _ := strconv.ParseInt(res.Header.Get("X-Rate-Limit-Reset"), 10, 64)
 	lrt.reset = time.Unix(reset, 0)
-
-	return res, err
+	return nil
 }

@@ -9,7 +9,7 @@ import (
 
 // HTTPClientConfig represents HTTP Client configuration.
 type HTTPClientConfig struct {
-	BearerToken string `yaml:"bearer_token"`
+	BearerToken string `yaml:"bearer_token,omitempty"`
 }
 
 // NewHTTPClient returns http.Client.
