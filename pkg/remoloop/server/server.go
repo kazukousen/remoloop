@@ -13,7 +13,7 @@ import (
 
 // Server represents http.Server.
 type Server interface {
-	Stop(ctx context.Context)
+	Stop()
 }
 
 type server struct {
@@ -63,12 +63,10 @@ func (s server) serve() {
 	close(s.done)
 }
 
-func (s server) Stop(ctx context.Context) {
+func (s server) Stop() {
+	ctx := context.Background()
 	if err := s.server.Shutdown(ctx); err != nil {
 		level.Error(s.logger).Log("msg", "failed to shutdown server", "error", err)
-		return
 	}
 	<-s.done
-	level.Info(s.logger).Log("msg", "success to stop server")
-	s.client.Stop(ctx)
 }

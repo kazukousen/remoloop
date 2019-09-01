@@ -5,12 +5,13 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi"
-
 	"github.com/go-kit/kit/log"
 	"github.com/kazukousen/remoloop/pkg/helpers"
 	"github.com/kazukousen/remoloop/pkg/remoloop/api"
@@ -55,10 +56,40 @@ func (c *controller) Me(w http.ResponseWriter, r *http.Request) {
 		`))
 }
 
+type rateLimitControl struct {
+	mu        *sync.RWMutex
+	remaining int
+	reset     time.Time
+}
+
+func (c rateLimitControl) wrap(next http.Handler) http.Handler {
+	f := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !c.verifyRemaining() {
+		}
+		next.ServeHTTP(w, r)
+	})
+	return f
+}
+
+func (c rateLimitControl) verifyRemaining() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	now := c.remaining
+	now--
+	return now > 0
+}
+
+func (c rateLimitControl) updateRateLimit(r *http.Request) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.remaining--
+	r.Header.Set("X-Rate-Limit-Remaining", strconv.Itoa(c.remaining))
+}
+
 func TestClient_Get(t *testing.T) {
 	r, c := chi.NewRouter(), newController()
 	r.Get("/1/users/me", c.Me)
-	r.Get("/foo", c.Inc)
+	r.Get("/inc", c.Inc)
 	srv := httptest.NewServer(r)
 	defer srv.Close()
 
@@ -79,7 +110,7 @@ func TestClient_Get(t *testing.T) {
 	}
 
 	for i := 0; i < 10; i++ {
-		client.Get(context.Background(), api.Resource("/foo"), ioutil.Discard)
+		client.Get(context.Background(), api.Resource("/inc"), ioutil.Discard)
 	}
 	if c.inc != 10 {
 		t.Errorf("not equal got %d, but want %d", c.inc, 10)

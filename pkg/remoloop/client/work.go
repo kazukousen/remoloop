@@ -6,9 +6,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/kazukousen/remoloop/pkg/remoloop/api"
-
 	"github.com/go-kit/kit/log/level"
+	"github.com/kazukousen/remoloop/pkg/remoloop/api"
 )
 
 func (c client) work() {

@@ -19,7 +19,7 @@ import (
 
 // Client represents API Client.
 type Client interface {
-	Stop(ctx context.Context)
+	Stop()
 	Get(ctx context.Context, resource api.Resource, w io.Writer)
 }
 
@@ -32,7 +32,7 @@ type client struct {
 	done   chan struct{}
 }
 
-// New returns Client and stand up worker goroutine.
+// New returns a Client and stand up worker goroutine.
 func New(logger log.Logger, cfg Config) (Client, error) {
 	host := "https://api.nature.global"
 	if cfg.Host != "" {
@@ -63,13 +63,9 @@ func New(logger log.Logger, cfg Config) (Client, error) {
 	return c, nil
 }
 
-func (c client) Stop(ctx context.Context) {
+func (c client) Stop() {
 	close(c.exit)
-	select {
-	case <-c.done:
-		level.Info(c.logger).Log("msg", "success to stop client")
-	case <-ctx.Done():
-	}
+	<-c.done
 }
 
 type rateLimitRoundTripper struct {
